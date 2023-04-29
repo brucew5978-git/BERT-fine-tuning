@@ -1,0 +1,1 @@
+Activate vm with transformers data installed
