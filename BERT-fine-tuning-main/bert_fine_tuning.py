@@ -18,12 +18,13 @@ else:
 import wget
 import os
 
+'''
 print("Downloading dataset...")
 url = 'https://nyu-mll.github.io/CoLA/cola_public_1.1.zip'
 
 if not os.path.exists('./cola_public_1.1.zip'):
     wget.download(url, './cola_public_1.1.zip')
-
+'''
 #for use on colab
 #if not os.path.exists('./cola_public/'):
 #    !unzip cola_public_1.1.zip
@@ -61,4 +62,48 @@ print('Tokenized: ', tokenizer.tokenize(sentences[0]))
 print('Token IDs: ', tokenizer.convert_tokens_to_ids(tokenizer.tokenize(sentences[0])))
 """
 
+#BERT specific tokens
+#CLS to mark beginning of sentence pair, and contiains hidden states of sentence during training, SEP marks end of sentence
 
+#Sentence length and attention mask
+#sentences have a max lenght and those with less words will have empty "pad" tokens 
+#mask is redundent array indicating if token is real word, or padding
+
+#finding max sentence length 
+maxLength = 0
+
+for sentence in sentences:
+    inputID = tokenizer.encode(sentence, add_special_tokens=True)
+    maxLength = max(maxLength, len(inputID))
+
+print(maxLength)
+
+
+#tokenize all sentences and map tokens to word ID
+inputID = []
+attentionMasks = []
+
+for sentence in sentences:
+    encodedDict = tokenizer.encode_plus(
+        sentence,
+        add_special_tokens = True,
+        max_length = 64,
+        padding='max_length',
+        return_attention_mask = True,
+        return_tensors = 'pt',
+        truncation=True
+    )
+
+    #Adding encoded sentence to the list
+    inputID.append(encodedDict['input_ids'])
+
+    #add attnetion mask to list
+    attentionMasks.append(encodedDict['attention_mask'])
+
+#Convert lists into tensors
+inputID = torch.cat(inputID, dim=0)
+attentionMasks = torch.cat(attentionMasks, dim=0)
+labels = torch.tensor(labels)
+
+print('Original: ', sentences[0])
+print('Token IDs: ', inputID[0])
