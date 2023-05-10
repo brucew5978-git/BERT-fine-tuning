@@ -150,8 +150,10 @@ model = BertForSequenceClassification.from_pretrained(
     output_attentions=False,
     output_hidden_states=False
 )
+#model consists of BERT specifically for sequence classification 
+#specified to have 2 output labels
 
-#model.cuda()
+model.cuda()
 
 '''
 # Get all of the model's parameters as a list of tuples.
@@ -222,6 +224,11 @@ trainingStats = []
 totalTime = time.time()
 
 for epoch in range(0, trainingEpochs):
+
+    # ==========================
+    #        Training
+    # ==========================
+
     print('/n ===== Epoch {:} / {:} ====='.format(epoch + 1, trainingEpochs))
     print("training")
 
@@ -238,13 +245,113 @@ for epoch in range(0, trainingEpochs):
             print('  Batch {:>5,}  of  {:>5,}.    Elapsed: {:}.'.format(step, len(trainDataloader), elapsed))
 
         #copy tensor to GPU using 'to' method
-        bathcInputID = batch[0].to(device)
+        batchInputID = batch[0].to(device)
         batchInputMask = batch[1].to(device)
         batchLabels = batch[2].to(device)
 
         #clearing previous gradients before backward pass
         model.zero_grad()
 
-        results = model()
+        #forward pass
+        results = model(batchInputID,
+                        token_type_ids=None,
+                        attention_mask=batchInputMask,
+                        labels=batchLabels,
+                        return_dict=True)
+        
+        loss = results.loss
+        logits=results.logits
+
+        totalTrainLoss += loss.item()
+
+        loss.backward()
+
+        #limiting gradients to 1.0 to prevent exploding gradients
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+        optimizer.step()
+
+        scheduler.step()
+
+    avgTrainLoss = totalTrainLoss/len(trainDataloader)
+
+    trainingTime = formatTime(time.time() - currentEpochTime)
+
+    print("")
+    print("  Average training loss: {0:.2f}".format(avgTrainLoss))
+    print("  Training epcoh took: {:}".format(trainingTime))
+
+    # ==========================
+    #        Validation
+    # ==========================
+
+    print("n/ running validation...")
+
+    currentEpochTime = time.time()
+
+    model.eval()
+
+    totalEvalAccuracy = 0
+    totalEvalLoss = 0
+    batchEvalSteps = 0
+
+    for batin in validationDataloader:
+
+        batchInputID = batch[0].to(device)
+        batchInputMask = batch[1].to(device)
+        batchLabels = batch[2].to(device)
+
+        with torch.no_grad():
+            evalResults = model(batchInputID,                        
+                            token_type_ids=None,
+                            attention_mask=batchInputMask,
+                            labels=batchLabels,
+                            return_dict=True)
+            
+        loss = evalResults.loss
+        logits = evalResults.logits
+
+        totalEvalLoss += loss.item()
+
+        logits = logits.detach().cpu().numpy()
+        labelID = batchLabels.to('cpu').numpy()
+
+        totalEvalAccuracy += flatAccuracy(logits, labelID)
+
+    avgValAccuracy = totalEvalAccuracy/len(validationDataloader)
+    print("  Accuracy: {0:.2f}".format(avgValAccuracy))
+
+    avgValLoss = totalEvalLoss/len(validationDataloader)
+
+    validationTime = formatTime(time.time() - currentEpochTime)
+
+    print("  Validation Loss: {0:.2f}".format(avgValLoss))
+    print("  Validation took: {:}".format(validationTime))
+
+    trainingStats.append(
+        {
+            'epoch': epoch + 1,
+            'Training Loss': avgTrainLoss,
+            'Validation Loss': avgValLoss,
+            'Validation Accuracy': avgValAccuracy,
+            'Training Time': trainingTime,
+            'Validation Time': validationTime
+        }
+    )
+
+print("")
+print("Training complete!")
+
+print("Total training took {:} (h:mm:ss)".format(formatTime(time.time()-totalTime)))
 
 
+
+#5. Data visualization
+import pandas as pd
+
+pd.set_option('precision', 2)
+
+dataframeStats = pd.DataFrame(data=trainingStats)
+dataframeStats = dataframeStats.set_index('epoch')
+
+dataframeStats
